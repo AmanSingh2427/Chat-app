@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import io from 'socket.io-client';
 import moment from 'moment';
@@ -10,6 +10,7 @@ const Chat = ({ selectedUserId }) => {
   const [inputMessage, setInputMessage] = useState('');
   const [userId, setUserId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const chatEndRef = useRef(null); // Ref for scrolling to the end of the chat
 
   useEffect(() => {
     // Extract userId from the token
@@ -78,6 +79,13 @@ const Chat = ({ selectedUserId }) => {
     };
   }, [userId, selectedUserId]);
 
+  useEffect(() => {
+    // Scroll to the bottom of the chat container whenever messages are updated
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
+
   const handleSendMessage = async () => {
     if (inputMessage.trim() && selectedUserId) {
       setInputMessage('');
@@ -145,12 +153,15 @@ const Chat = ({ selectedUserId }) => {
   };
 
   return (
-    <div className="flex flex-col h-screen p-4 bg-gray-100">
+    <div className="flex flex-col h-full p-4 bg-gray-100">
       <div className="flex-grow overflow-y-auto p-4 bg-white rounded-lg shadow-md">
         {messages.length === 0 ? (
           <div className="text-center text-gray-500">Start your conversation</div>
         ) : (
-          renderMessages()
+          <>
+            {renderMessages()}
+            <div ref={chatEndRef} /> {/* This empty div is used to scroll to the bottom */}
+          </>
         )}
       </div>
       <div className="mt-4 flex">

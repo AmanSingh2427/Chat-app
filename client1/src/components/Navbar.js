@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaBell, FaSignOutAlt } from 'react-icons/fa';
+import { FaBell, FaSignOutAlt, FaPlus } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 
 const Navbar = ({ user }) => {
@@ -11,6 +11,10 @@ const Navbar = ({ user }) => {
 
     // Redirect to the login page
     navigate('/login');
+  };
+
+  const navigateToCreateGroup = () => {
+    navigate('/create-group');
   };
 
   return (
@@ -27,8 +31,14 @@ const Navbar = ({ user }) => {
             <span className="text-white">{user.username}</span>
           </div>
         )}
+        <button 
+          onClick={navigateToCreateGroup} 
+          className="ml-4 text-white flex items-center space-x-2 hover:text-gray-400">
+          <FaPlus />
+          <span>Create Group</span>
+        </button>
         <div className="ml-4">
-          {/* <FaBell className="text-white text-2xl" /> */}
+          <FaBell className="text-white text-2xl" />
         </div>
         <button 
           onClick={handleLogout} 

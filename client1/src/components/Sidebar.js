@@ -39,9 +39,16 @@ const Sidebar = ({ onSelectUser }) => {
   }, []);
 
   // Filter users based on the search query
-  const filteredUsers = users.filter(user =>
-    user.username.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredUsers = users
+    .filter(user =>
+      user.username.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => {
+      // Sort users by the timestamp of their most recent message
+      const recentMessageA = new Date(a.mostRecentMessageTime).getTime();
+      const recentMessageB = new Date(b.mostRecentMessageTime).getTime();
+      return recentMessageB - recentMessageA;
+    });
 
   // Handle user selection
   const handleSelectUser = async (userId) => {
@@ -73,7 +80,7 @@ const Sidebar = ({ onSelectUser }) => {
   };
 
   return (
-    <div className="w-64 h-screen bg-gray-800 text-white overflow-y-auto">
+    <div className="w-64 h-full bg-gray-800 text-white overflow-y-auto">
       <div className="p-4">
         <h2 className="text-xl font-bold mb-4">Users</h2>
         <input
@@ -99,10 +106,17 @@ const Sidebar = ({ onSelectUser }) => {
               ) : (
                 <div className="w-12 h-12 bg-gray-600 rounded-full flex items-center justify-center text-white mr-4">U</div>
               )}
-              <span>{user.username}</span>
-              {user.unreadMessages > 0 && (
+              <div className="flex flex-col">
+                <span>{user.username}</span>
+                {user.unreadMessagesCount > 0 && (
+                  <span className="text-gray-400 text-sm">
+                    Unread Messages: {user.unreadMessagesCount}
+                  </span>
+                )}
+              </div>
+              {user.unreadMessagesCount > 0 && (
                 <span className="ml-auto bg-red-600 text-white px-2 py-1 rounded-full text-sm">
-                  {user.unreadMessages}
+                  {user.unreadMessagesCount}
                 </span>
               )}
             </li>

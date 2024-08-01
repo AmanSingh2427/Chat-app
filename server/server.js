@@ -155,14 +155,21 @@ app.get('/api/user', authenticateToken, async (req, res) => {
 
 
 
-// Fetch Other Users Route
+// Fetch Other Users Route for sidebar
+// Fetch Other Users Route for sidebar
 app.get('/api/users', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    // Fetch other users excluding the current user
+    // Fetch other users excluding the current user with unread message count and most recent message time
     const users = await pool.query(
-      'SELECT id, username, image FROM aman.chatusers WHERE id != $1',
+      `SELECT u.id, u.username, u.image,
+              COALESCE(MAX(m.created_at), '1970-01-01T00:00:00Z') AS mostRecentMessageTime,
+              COALESCE(SUM(CASE WHEN m.read = FALSE THEN 1 ELSE 0 END), 0) AS unreadMessagesCount
+       FROM aman.chatusers u
+       LEFT JOIN aman.chat_messages m ON u.id = m.receiver_id
+       WHERE u.id != $1
+       GROUP BY u.id`,
       [userId]
     );
 
@@ -172,6 +179,8 @@ app.get('/api/users', authenticateToken, async (req, res) => {
     res.status(500).json({ message: 'Error fetching users' });
   }
 });
+
+
 
 
 
