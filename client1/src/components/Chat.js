@@ -5,25 +5,27 @@ import moment from 'moment';
 
 const socket = io('http://localhost:5000'); // Replace with your server URL
 
-const Chat = ({ selectedUserId }) => {
+const Chat = ({ selectedUserId, selectedGroupId }) => {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [userId, setUserId] = useState(null);
+  const [userName, setUserName] = useState('');
   const [loading, setLoading] = useState(true);
-  const chatEndRef = useRef(null); // Ref for scrolling to the end of the chat
+  const chatEndRef = useRef(null);
 
   useEffect(() => {
-    // Extract userId from the token
-    const extractUserIdFromToken = () => {
+    const extractUserDetailsFromToken = () => {
       const token = localStorage.getItem('token');
       if (token) {
         const decodedToken = JSON.parse(atob(token.split('.')[1])); // Decode JWT token payload
-        return decodedToken.userId; // Update based on the actual token structure
+        return { userId: decodedToken.userId, userName: decodedToken.userName }; // Update based on the actual token structure
       }
-      return null;
+      return { userId: null, userName: '' };
     };
 
-    setUserId(extractUserIdFromToken());
+    const { userId, userName } = extractUserDetailsFromToken();
+    setUserId(userId);
+    setUserName(userName);
 
     const fetchMessages = async () => {
       try {
@@ -41,6 +43,13 @@ const Chat = ({ selectedUserId }) => {
             }
           });
           setMessages(response.data);
+        } else if (selectedGroupId) {
+          const response = await axios.get(`http://localhost:5000/api/groups/${selectedGroupId}/messages`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          setMessages(response.data);
         }
       } catch (error) {
         if (error.response && error.response.status === 404) {
@@ -53,22 +62,28 @@ const Chat = ({ selectedUserId }) => {
       }
     };
 
-    if (selectedUserId) {
+    if (selectedUserId || selectedGroupId) {
       fetchMessages();
     }
 
     return () => {
       socket.off('newMessage');
     };
-  }, [selectedUserId]);
+  }, [selectedUserId, selectedGroupId]);
 
   useEffect(() => {
     const handleNewMessage = (message) => {
-      if (
-        (message.sender_id === userId && message.receiver_id === selectedUserId) ||
-        (message.sender_id === selectedUserId && message.receiver_id === userId)
-      ) {
-        setMessages((prevMessages) => [...prevMessages, message]);
+      if (selectedUserId) {
+        if (
+          (message.sender_id === userId && message.receiver_id === selectedUserId) ||
+          (message.sender_id === selectedUserId && message.receiver_id === userId)
+        ) {
+          setMessages((prevMessages) => [...prevMessages, message]);
+        }
+      } else if (selectedGroupId) {
+        if (message.group_id === selectedGroupId) {
+          setMessages((prevMessages) => [...prevMessages, message]);
+        }
       }
     };
 
@@ -77,34 +92,54 @@ const Chat = ({ selectedUserId }) => {
     return () => {
       socket.off('newMessage', handleNewMessage);
     };
-  }, [userId, selectedUserId]);
+  }, [userId, selectedUserId, selectedGroupId]);
 
   useEffect(() => {
-    // Scroll to the bottom of the chat container whenever messages are updated
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (inputMessage.trim() && selectedUserId) {
+    if (inputMessage.trim() && (selectedUserId || selectedGroupId)) {
       setInputMessage('');
       try {
         const token = localStorage.getItem('token');
-        const response = await axios.post(
-          'http://localhost:5000/api/messages',
-          { receiverId: selectedUserId, message: inputMessage },
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`
+        let response;
+        if (selectedUserId) {
+          response = await axios.post(
+            'http://localhost:5000/api/messages',
+            { receiverId: selectedUserId, message: inputMessage },
+            {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
             }
-          }
-        );
-        
-        // Add the message to the chat
-        setMessages((prevMessages) => [...prevMessages, response.data]);
+          );
+        } else if (selectedGroupId) {
+          response = await axios.post(
+            `http://localhost:5000/api/groups/${selectedGroupId}/messages`,
+            { senderId: userId, message: inputMessage },
+            {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            }
+          );
+        }
 
-        // Clear the input field
+        if (response && response.data) {
+          const sentMessage = {
+            id: response.data.id,
+            sender_id: userId,
+            sender_name: userName,
+            receiver_id: selectedUserId || null,
+            group_id: selectedGroupId || null,
+            message: inputMessage,
+            created_at: response.data.created_at || new Date().toISOString(), // Use server's created_at time if available
+          };
+          setMessages((prevMessages) => [...prevMessages, sentMessage]);
+        }
       } catch (error) {
         console.error('Error sending message:', error);
       }
@@ -170,12 +205,12 @@ const Chat = ({ selectedUserId }) => {
           value={inputMessage}
           onKeyDown={handleKeyDown} // Add this line to handle Enter key presses
           onChange={(e) => setInputMessage(e.target.value)}
-          className="flex-grow p-2 border focus:outline-none focus:ring focus:border-blue-300"
+          className="flex-grow px-4 py-2 border border-gray-300 rounded-l-lg focus:outline-none"
           placeholder="Type your message..."
         />
         <button
           onClick={handleSendMessage}
-          className="p-2 bg-blue-500 text-white rounded-r-lg hover:bg-blue-600"
+          className="px-4 py-2 bg-blue-500 text-white rounded-r-lg hover:bg-blue-600 focus:outline-none"
         >
           Send
         </button>

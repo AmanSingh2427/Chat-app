@@ -9,6 +9,7 @@ const Home = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedUserId, setSelectedUserId] = useState(null);
+  const [selectedGroupId, setSelectedGroupId] = useState(null);
 
   useEffect(() => {
     const fetchUserDetails = async () => {
@@ -41,15 +42,23 @@ const Home = () => {
   if (loading) return <div>Loading...</div>;
   if (error) return <div>{error}</div>;
 
+  const handleSelectUser = (userId) => {
+    setSelectedUserId(userId);
+    setSelectedGroupId(null); // Reset selected group when a user is selected
+  };
+
+  const handleSelectGroup = (groupId) => {
+    setSelectedGroupId(groupId);
+    setSelectedUserId(null); // Reset selected user when a group is selected
+  };
+
   return (
     <div className="flex flex-col h-screen">
       <Navbar user={user} />
       <div className="flex flex-grow overflow-hidden">
-        <div className="w-64 bg-gray-800 overflow-y-auto">
-          <Sidebar onSelectUser={setSelectedUserId} />
-        </div>
+        <Sidebar onSelectUser={handleSelectUser} onSelectGroup={handleSelectGroup} />
         <div className="flex-grow overflow-y-auto">
-          <Chat selectedUserId={selectedUserId} />
+          <Chat selectedUserId={selectedUserId} selectedGroupId={selectedGroupId} />
         </div>
       </div>
     </div>

@@ -47,6 +47,8 @@ const pool = new Pool({
   port: 5432,
 });
 
+// const jwt = require('jsonwebtoken');
+
 // Secret key for JWT
 const JWT_SECRET = 'your_jwt_secret_key'; // Replace with your secret key
 
@@ -62,6 +64,8 @@ const authenticateToken = (req, res, next) => {
     next();
   });
 };
+
+
 
 
 
@@ -249,6 +253,9 @@ app.get('/api/messages/:userId', authenticateToken, async (req, res) => {
 app.post('/api/messages', authenticateToken, async (req, res) => {
   const { receiverId, message } = req.body; 
   const senderId = req.user.userId;
+  console.log(senderId);
+  console.log(req.body,receiverId,message);
+  // return;
 
   if (!receiverId || !message) {
     return res.status(400).json({ message: 'Receiver ID and message are required' });
@@ -258,6 +265,7 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
     // Fetch sender's name
     const senderResult = await pool.query('SELECT username FROM aman.chatusers WHERE id = $1', [senderId]);
     const senderName = senderResult.rows[0].username;
+    console.log(senderResult);
 
     // Insert the new message
     const result = await pool.query(
@@ -300,6 +308,231 @@ app.get('/api/messages/:receiverId', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error fetching messages:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+////////////////  Gropus /////////////////////////////////////////////////////////////////////////////
+
+// Route to get all users to create a group
+app.get('/api/chatusersgroup', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM aman.chatusers');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+// Route to create a new group
+app.post('/api/groups', async (req, res) => {
+  const { groupName, admin, users } = req.body;
+  if (!groupName || !admin || !Array.isArray(users)) {
+    return res.status(400).json({ error: 'Invalid input data' });
+  }
+
+  try {
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      // Create the group
+      const groupResult = await client.query(
+        'INSERT INTO aman.groups (name) VALUES ($1) RETURNING id',
+        [groupName]
+      );
+      const groupId = groupResult.rows[0].id;
+
+      // Insert group members
+      const insertMemberPromises = users.map(userId => {
+        return client.query(
+          'INSERT INTO aman.group_members (group_id, user_id) VALUES ($1, $2)',
+          [groupId, userId]
+        );
+      });
+      await Promise.all(insertMemberPromises);
+
+      await client.query('COMMIT');
+      res.status(201).json({ groupId });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error creating group:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Error connecting to database:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+
+// Route to get all groups
+// Route to get all groups (if needed, can be modified similarly to the above example)
+app.get('/api/groups', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM aman.groups');
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching groups:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Route to get user details
+app.get('/api/user', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const result = await pool.query('SELECT * FROM aman.chatusers WHERE id = $1', [userId]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching user details:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+// Route to get groups with member names and most recent message time
+// Route to get groups with member names and most recent message time for the current user
+app.get('/api/groups/members', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const result = await pool.query(`
+      SELECT 
+        g.id AS group_id,
+        g.name AS group_name,
+        cu.id AS user_id,
+        cu.username AS user_name,
+        g.most_recent_message_time
+      FROM 
+        aman.group_members gm
+      JOIN 
+        aman.groups g ON gm.group_id = g.id
+      JOIN 
+        aman.chatusers cu ON gm.user_id = cu.id
+      WHERE 
+        gm.group_id IN (
+          SELECT group_id FROM aman.group_members WHERE user_id = $1
+        )
+    `, [userId]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching groups and members:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+
+
+// Route to get groups for a specific user
+// Route to get groups for a specific user
+app.get('/api/user/groups', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const result = await pool.query(`
+      SELECT 
+        g.id AS group_id,
+        g.name AS group_name
+      FROM 
+        aman.group_members gm
+      JOIN 
+        aman.groups g ON gm.group_id = g.id
+      WHERE 
+        gm.user_id = $1
+    `, [userId]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching user groups:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+
+// Route to send a message to a group
+app.post('/api/groups/:groupId/messages', async (req, res) => {
+  const { groupId } = req.params;
+  const { senderId, message } = req.body;
+
+  if (!senderId || !message) {
+    return res.status(400).json({ error: 'Invalid input data' });
+  }
+
+  try {
+    // Insert the message into the group_messages table
+    await pool.query(
+      'INSERT INTO aman.group_messages (group_id, sender_id, message) VALUES ($1, $2, $3)',
+      [groupId, senderId, message]
+    );
+
+    // Fetch the message along with the sender's username
+    const result = await pool.query(
+      `SELECT gm.id, gm.group_id, gm.sender_id, gm.message, gm.created_at, cu.username AS sender_name
+       FROM aman.group_messages gm
+       JOIN aman.group_members gmbr ON gm.group_id = gmbr.group_id
+       JOIN aman.chatusers cu ON gmbr.user_id = cu.id
+       WHERE gm.group_id = $1 AND gm.sender_id = $2 AND gm.message = $3
+       ORDER BY gm.created_at DESC
+       LIMIT 1`,
+      [groupId, senderId, message]
+    );
+    console.log(result);
+
+    const sentMessage = result.rows[0];
+    res.status(201).json(sentMessage);
+  } catch (error) {
+    console.error('Error sending message:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+
+
+
+
+
+// Route to get details of a specific group
+app.get('/api/groups/:id', async (req, res) => {
+  const groupId = parseInt(req.params.id, 10);
+  try {
+    const result = await pool.query('SELECT * FROM aman.groups WHERE id = $1', [groupId]);
+    if (result.rows.length > 0) {
+      res.json(result.rows[0]);
+    } else {
+      res.status(404).json({ error: 'Group not found' });
+    }
+  } catch (error) {
+    console.error('Error fetching group details:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+
+// Route to get messages from a group
+app.get('/api/groups/:groupId/messages', async (req, res) => {
+  const { groupId } = req.params;
+
+  try {
+    const result = await pool.query(
+      'SELECT * FROM aman.group_messages WHERE group_id = $1 ORDER BY created_at ASC',
+      [groupId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching messages:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
