@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
+import io from 'socket.io-client';
+
+const socket = io('http://localhost:5000');
 
 const Sidebar = ({ onSelectUser, onSelectGroup }) => {
   const [users, setUsers] = useState([]);
@@ -7,6 +10,7 @@ const Sidebar = ({ onSelectUser, onSelectGroup }) => {
   const [groupMembers, setGroupMembers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState(null);
 
   useEffect(() => {
     const fetchUsersAndGroups = async () => {
@@ -17,7 +21,6 @@ const Sidebar = ({ onSelectUser, onSelectGroup }) => {
           return;
         }
 
-        // Fetch current user's details
         const userResponse = await axios.get('http://localhost:5000/api/user', {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -25,7 +28,6 @@ const Sidebar = ({ onSelectUser, onSelectGroup }) => {
         });
         setCurrentUser(userResponse.data);
 
-        // Fetch other users
         const usersResponse = await axios.get('http://localhost:5000/api/users', {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -33,7 +35,6 @@ const Sidebar = ({ onSelectUser, onSelectGroup }) => {
         });
         setUsers(usersResponse.data);
 
-        // Fetch groups
         const groupsResponse = await axios.get('http://localhost:5000/api/groups', {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -41,27 +42,83 @@ const Sidebar = ({ onSelectUser, onSelectGroup }) => {
         });
         setGroups(groupsResponse.data);
 
-        // Fetch group members
-        const groupMembersResponse = await axios.get('http://localhost:5000/api/groups/members', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        setGroupMembers(groupMembersResponse.data);
-
       } catch (error) {
-        console.error('Error fetching users, groups, or user details:', error.response ? error.response.data : error.message);
+        console.error('Error fetching users or groups:', error.response ? error.response.data : error.message);
       }
     };
 
     fetchUsersAndGroups();
   }, []);
 
-  // Filter users and groups based on the search query
+  useEffect(() => {
+    if (selectedGroupId) {
+      const fetchGroupMembers = async () => {
+        try {
+          const token = localStorage.getItem('token');
+          if (!token) {
+            console.error('No token found');
+            return;
+          }
+
+          const groupMembersResponse = await axios.get(`http://localhost:5000/api/groups/${selectedGroupId}/members`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          setGroupMembers(groupMembersResponse.data);
+        } catch (error) {
+          console.error('Error fetching group members:', error.response ? error.response.data : error.message);
+        }
+      };
+
+      fetchGroupMembers();
+    }
+  }, [selectedGroupId]);
+
+  useEffect(() => {
+    socket.on('newMessage', (message) => {
+      // console.log('New message received:', message);
+  
+      if (message.group_id) {
+        console.log('Updating group for group_id:', message.group_id);
+        setGroups((prevGroups) => {
+          const updatedGroups = prevGroups.map((group) => {
+            if (group.id === message.group_id) {
+              return { ...group, mostRecentMessageTime: message.created_at };
+            }
+            return group;
+          });
+          console.log('Updated groups:', updatedGroups);
+          return updatedGroups;
+        });
+      } else if (message.sender_id) {
+        console.log('Updating user for sender_id:', message.sender_id);
+        setUsers((prevUsers) => {
+          const updatedUsers = prevUsers.map((user) => {
+            if (user.id === message.sender_id) {
+              return {
+                ...user,
+                mostRecentMessageTime: message.created_at,
+                unreadMessagesCount: user.unreadMessagesCount + 1,
+              };
+            }
+            return user;
+          });
+          console.log('Updated users:', updatedUsers);
+          return updatedUsers;
+        });
+      }
+    });
+  
+    return () => {
+      socket.off('newMessage');
+    };
+  }, []);
+  
+
   const filteredUsers = users
     .filter(user => user.username.toLowerCase().includes(searchQuery.toLowerCase()))
     .sort((a, b) => {
-      // Sort users by the timestamp of their most recent message
       const recentMessageA = new Date(a.mostRecentMessageTime).getTime();
       const recentMessageB = new Date(b.mostRecentMessageTime).getTime();
       return recentMessageB - recentMessageA;
@@ -70,13 +127,11 @@ const Sidebar = ({ onSelectUser, onSelectGroup }) => {
   const filteredGroups = groups
     .filter(group => group.name.toLowerCase().includes(searchQuery.toLowerCase()))
     .sort((a, b) => {
-      // Sort groups by the timestamp of their most recent message
       const recentMessageA = new Date(a.mostRecentMessageTime).getTime();
       const recentMessageB = new Date(b.mostRecentMessageTime).getTime();
       return recentMessageB - recentMessageA;
     });
 
-  // Handle user selection
   const handleSelectUser = async (userId) => {
     try {
       const token = localStorage.getItem('token');
@@ -90,7 +145,6 @@ const Sidebar = ({ onSelectUser, onSelectGroup }) => {
         { headers: { 'Authorization': `Bearer ${token}` } }
       );
 
-      // Fetch updated user data to reflect message count change
       const userResponse = await axios.get('http://localhost:5000/api/user', {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -104,8 +158,8 @@ const Sidebar = ({ onSelectUser, onSelectGroup }) => {
     onSelectUser(userId);
   };
 
-  // Handle group selection
   const handleSelectGroup = (groupId) => {
+    setSelectedGroupId(groupId);
     onSelectGroup(groupId);
   };
 

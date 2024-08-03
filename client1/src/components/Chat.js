@@ -103,8 +103,12 @@ const Chat = ({ selectedUserId, selectedGroupId }) => {
   const handleSendMessage = async () => {
     if (inputMessage.trim() && (selectedUserId || selectedGroupId)) {
       setInputMessage('');
+      console.log('Send message function triggered'); // Ensure this is logged
+
       try {
         const token = localStorage.getItem('token');
+        console.log('Token:', token); // Log the token
+
         let response;
         if (selectedUserId) {
           response = await axios.post(
@@ -128,21 +132,28 @@ const Chat = ({ selectedUserId, selectedGroupId }) => {
           );
         }
 
+        console.log('API Response:', response.data); // Log the API response
+
         if (response && response.data) {
           const sentMessage = {
             id: response.data.id,
             sender_id: userId,
-            sender_name: userName,
+            sender_name: userName, // Ensure this is set correctly
             receiver_id: selectedUserId || null,
             group_id: selectedGroupId || null,
             message: inputMessage,
-            created_at: response.data.created_at || new Date().toISOString(), // Use server's created_at time if available
+            created_at: response.data.created_at || new Date().toISOString(),
           };
+
+          console.log('Sent message data:', sentMessage); // Log sent message data
           setMessages((prevMessages) => [...prevMessages, sentMessage]);
+          socket.emit('newMessage', sentMessage); // Emit message to socket
         }
       } catch (error) {
         console.error('Error sending message:', error);
       }
+    } else {
+      console.log('Message input is empty or no user/group selected'); // Debugging empty input cases
     }
   };
 
@@ -173,7 +184,9 @@ const Chat = ({ selectedUserId, selectedGroupId }) => {
           <div key={`message-${message.id}`} className={`flex ${message.sender_id === userId ? 'justify-end' : 'justify-start'} mb-2`}>
             <div className={`p-2 my-2 rounded-lg max-w-xs md:max-w-md lg:max-w-lg ${message.sender_id === userId ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
               style={{
-                alignSelf: message.sender_id === userId ? 'flex-end' : 'flex-start'
+                alignSelf: message.sender_id === userId ? 'flex-end' : 'flex-start',
+                wordBreak: 'break-word',
+                overflowWrap: 'break-word',
               }}
             >
               <div className="text-sm text-dark-500 mb-1">
@@ -200,17 +213,17 @@ const Chat = ({ selectedUserId, selectedGroupId }) => {
         )}
       </div>
       <div className="mt-4 flex">
-        <input
-          type="text"
+        <textarea
           value={inputMessage}
-          onKeyDown={handleKeyDown} // Add this line to handle Enter key presses
           onChange={(e) => setInputMessage(e.target.value)}
-          className="flex-grow px-4 py-2 border border-gray-300 rounded-l-lg focus:outline-none"
-          placeholder="Type your message..."
+          onKeyDown={handleKeyDown}
+          placeholder="Type a message..."
+          rows="2"
+          className="flex-grow px-4 py-2 border border-gray-300 rounded-l-lg focus:outline-none resize-none"
         />
         <button
           onClick={handleSendMessage}
-          className="px-4 py-2 bg-blue-500 text-white rounded-r-lg hover:bg-blue-600 focus:outline-none"
+          className="px-4 py-2 bg-blue-500 text-white rounded-r-lg"
         >
           Send
         </button>

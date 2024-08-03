@@ -156,10 +156,6 @@ app.get('/api/user', authenticateToken, async (req, res) => {
 
 
 
-
-
-
-// Fetch Other Users Route for sidebar
 // Fetch Other Users Route for sidebar
 app.get('/api/users', authenticateToken, async (req, res) => {
   try {
@@ -185,9 +181,6 @@ app.get('/api/users', authenticateToken, async (req, res) => {
 });
 
 
-
-
-
 // Mark messages as read for a specific user
 app.post('/api/messages/mark-as-read', authenticateToken, async (req, res) => {
   try {
@@ -205,18 +198,6 @@ app.post('/api/messages/mark-as-read', authenticateToken, async (req, res) => {
     res.status(500).send('Server error');
   }
 });
-
-// // Fetch All Users Route
-// app.get('/api/users', authenticateToken, async (req, res) => {
-//   try {
-//     const result = await pool.query('SELECT id, username, image FROM aman.chatusers');
-//     const users = result.rows;
-//     res.json(users);
-//   } catch (error) {
-//     console.error('Error fetching users:', error);
-//     res.status(500).json({ message: 'Error fetching users' });
-//   }
-// });
 
 
 // Fetch Messages Route for a specific user
@@ -249,12 +230,15 @@ app.get('/api/messages/:userId', authenticateToken, async (req, res) => {
 
 
 
+
+
+
 // Send Message Route
 app.post('/api/messages', authenticateToken, async (req, res) => {
-  const { receiverId, message } = req.body; 
+  const { receiverId, message } = req.body;
   const senderId = req.user.userId;
-  console.log(senderId);
-  console.log(req.body,receiverId,message);
+  // console.log(senderId);
+  // console.log(req.body, receiverId, message);
   // return;
 
   if (!receiverId || !message) {
@@ -265,7 +249,7 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
     // Fetch sender's name
     const senderResult = await pool.query('SELECT username FROM aman.chatusers WHERE id = $1', [senderId]);
     const senderName = senderResult.rows[0].username;
-    console.log(senderResult);
+    // console.log(senderResult);
 
     // Insert the new message
     const result = await pool.query(
@@ -370,6 +354,21 @@ app.post('/api/groups', async (req, res) => {
 });
 
 
+// Route to get user details
+app.get('/api/user', authenticateToken, async (req, res) => {
+  
+  try {
+    const userId = req.user.id;
+
+    const result = await pool.query('SELECT * FROM aman.chatusers WHERE id = $1', [userId]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching user details:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
 
 // Route to get all groups
 // Route to get all groups (if needed, can be modified similarly to the above example)
@@ -383,51 +382,38 @@ app.get('/api/groups', authenticateToken, async (req, res) => {
   }
 });
 
-// Route to get user details
-app.get('/api/user', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    const result = await pool.query('SELECT * FROM aman.chatusers WHERE id = $1', [userId]);
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error('Error fetching user details:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
 
 // Route to get groups with member names and most recent message time
 // Route to get groups with member names and most recent message time for the current user
-app.get('/api/groups/members', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
+// app.get('/api/groups/members', authenticateToken, async (req, res) => {
+//   try {
+//     const userId = req.user.id;
 
-    const result = await pool.query(`
-      SELECT 
-        g.id AS group_id,
-        g.name AS group_name,
-        cu.id AS user_id,
-        cu.username AS user_name,
-        g.most_recent_message_time
-      FROM 
-        aman.group_members gm
-      JOIN 
-        aman.groups g ON gm.group_id = g.id
-      JOIN 
-        aman.chatusers cu ON gm.user_id = cu.id
-      WHERE 
-        gm.group_id IN (
-          SELECT group_id FROM aman.group_members WHERE user_id = $1
-        )
-    `, [userId]);
+//     const result = await pool.query(`
+//       SELECT 
+//         g.id AS group_id,
+//         g.name AS group_name,
+//         cu.id AS user_id,
+//         cu.username AS user_name,
+//         g.most_recent_message_time
+//       FROM 
+//         aman.group_members gm
+//       JOIN 
+//         aman.groups g ON gm.group_id = g.id
+//       JOIN 
+//         aman.chatusers cu ON gm.user_id = cu.id
+//       WHERE 
+//         gm.group_id IN (
+//           SELECT group_id FROM aman.group_members WHERE user_id = $1
+//         )
+//     `, [userId]);
 
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Error fetching groups and members:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+//     res.json(result.rows);
+//   } catch (error) {
+//     console.error('Error fetching groups and members:', error);
+//     res.status(500).json({ error: 'Internal server error' });
+//   }
+// });
 
 
 
@@ -459,42 +445,38 @@ app.get('/api/user/groups', authenticateToken, async (req, res) => {
 
 
 
-// Route to send a message to a group
-app.post('/api/groups/:groupId/messages', async (req, res) => {
+// Send Group Message Route
+// Send Group Message Route
+app.post('/api/groups/:groupId/messages', authenticateToken, async (req, res) => {
   const { groupId } = req.params;
-  const { senderId, message } = req.body;
+  const { message } = req.body;
+  const senderId = req.user.userId;
 
-  if (!senderId || !message) {
-    return res.status(400).json({ error: 'Invalid input data' });
+  if (!message) {
+    return res.status(400).json({ message: 'Message is required' });
   }
 
   try {
-    // Insert the message into the group_messages table
-    await pool.query(
-      'INSERT INTO aman.group_messages (group_id, sender_id, message) VALUES ($1, $2, $3)',
-      [groupId, senderId, message]
-    );
+    const senderResult = await pool.query('SELECT username FROM aman.chatusers WHERE id = $1', [senderId]);
+    const senderName = senderResult.rows[0].username;
 
-    // Fetch the message along with the sender's username
     const result = await pool.query(
-      `SELECT gm.id, gm.group_id, gm.sender_id, gm.message, gm.created_at, cu.username AS sender_name
-       FROM aman.group_messages gm
-       JOIN aman.group_members gmbr ON gm.group_id = gmbr.group_id
-       JOIN aman.chatusers cu ON gmbr.user_id = cu.id
-       WHERE gm.group_id = $1 AND gm.sender_id = $2 AND gm.message = $3
-       ORDER BY gm.created_at DESC
-       LIMIT 1`,
+      'INSERT INTO aman.group_messages (group_id, sender_id, message) VALUES ($1, $2, $3) RETURNING id, created_at',
       [groupId, senderId, message]
     );
-    console.log(result);
 
-    const sentMessage = result.rows[0];
-    res.status(201).json(sentMessage);
+    const newMessage = result.rows[0];
+
+    // Emit the new group message including sender's name
+    io.to(groupId).emit('newMessage', { sender_id: senderId, sender_name: senderName, group_id: groupId, message, created_at: newMessage.created_at });
+
+    res.status(201).json(newMessage);
   } catch (error) {
-    console.error('Error sending message:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error sending group message:', error);
+    res.status(500).json({ message: 'Error sending group message' });
   }
 });
+
 
 
 
@@ -505,6 +487,7 @@ app.post('/api/groups/:groupId/messages', async (req, res) => {
 // Route to get details of a specific group
 app.get('/api/groups/:id', async (req, res) => {
   const groupId = parseInt(req.params.id, 10);
+  // console.log('Fetching details for group:', groupId);
   try {
     const result = await pool.query('SELECT * FROM aman.groups WHERE id = $1', [groupId]);
     if (result.rows.length > 0) {
@@ -520,13 +503,21 @@ app.get('/api/groups/:id', async (req, res) => {
 
 
 
+
 // Route to get messages from a group
 app.get('/api/groups/:groupId/messages', async (req, res) => {
   const { groupId } = req.params;
+  console.log('Fetching details for group:', groupId);
 
   try {
     const result = await pool.query(
-      'SELECT * FROM aman.group_messages WHERE group_id = $1 ORDER BY created_at ASC',
+      `
+      SELECT gm.id, gm.group_id, gm.sender_id, gm.message, gm.created_at, cu.username AS sender_name
+      FROM aman.group_messages gm
+      JOIN aman.chatusers cu ON gm.sender_id = cu.id
+      WHERE gm.group_id = $1
+      ORDER BY gm.created_at ASC
+      `,
       [groupId]
     );
     res.json(result.rows);
@@ -540,6 +531,8 @@ app.get('/api/groups/:groupId/messages', async (req, res) => {
 
 
 
+
+
 // Serve static files from 'uploads' directory
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -548,15 +541,37 @@ if (!fs.existsSync('uploads')) {
   fs.mkdirSync('uploads');
 }
 
-// Socket.IO connection
+// Socket.IO events
 io.on('connection', (socket) => {
-  console.log('a user connected');
+  console.log('A user connected');
+
+  // Join group room
+  socket.on('joinGroup', (groupId) => {
+    socket.join(groupId);
+    console.log(`User joined group ${groupId}`);
+  });
+
+  // Handle new message event
+  socket.on('newMessage', (data) => {
+    const { receiver_id, message } = data;
+    console.log("T1 "+ receiver_id, message);
+    io.to(receiver_id).emit('messageReceived', { message });
+  });
+
+  // Handle new group message event
+  socket.on('newGroupMessage', (data) => {
+    const { group_id, message } = data;
+    console.log("T2 "+ group_id, message);
+    io.to(group_id).emit('groupMessageReceived', { message });
+  });
+
+  // Handle disconnect
   socket.on('disconnect', () => {
-    console.log('user disconnected');
+    console.log('User disconnected');
   });
 });
 
+
 server.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
+  console.log(`Server running on port ${port}`);
 });
-server.js
