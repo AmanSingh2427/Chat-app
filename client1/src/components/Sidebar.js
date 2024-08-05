@@ -77,14 +77,20 @@ const Sidebar = ({ onSelectUser, onSelectGroup }) => {
 
   useEffect(() => {
     socket.on('newMessage', (message) => {
-      // console.log('New message received:', message);
+      console.log('New message received:', message);
+  
+      const messageTime = message.created_at || new Date().toISOString();
   
       if (message.group_id) {
         console.log('Updating group for group_id:', message.group_id);
         setGroups((prevGroups) => {
           const updatedGroups = prevGroups.map((group) => {
             if (group.id === message.group_id) {
-              return { ...group, mostRecentMessageTime: message.created_at };
+              return { 
+                ...group, 
+                mostRecentMessageTime: messageTime,
+                // Add or update other fields if needed
+              };
             }
             return group;
           });
@@ -98,8 +104,8 @@ const Sidebar = ({ onSelectUser, onSelectGroup }) => {
             if (user.id === message.sender_id) {
               return {
                 ...user,
-                mostRecentMessageTime: message.created_at,
-                unreadMessagesCount: user.unreadMessagesCount + 1,
+                mostRecentMessageTime: messageTime,
+                unreadMessagesCount: (user.unreadMessagesCount || 0) + 1,
               };
             }
             return user;
@@ -115,20 +121,19 @@ const Sidebar = ({ onSelectUser, onSelectGroup }) => {
     };
   }, []);
   
-
   const filteredUsers = users
     .filter(user => user.username.toLowerCase().includes(searchQuery.toLowerCase()))
     .sort((a, b) => {
-      const recentMessageA = new Date(a.mostRecentMessageTime).getTime();
-      const recentMessageB = new Date(b.mostRecentMessageTime).getTime();
+      const recentMessageA = a.mostRecentMessageTime ? new Date(a.mostRecentMessageTime).getTime() : 0;
+      const recentMessageB = b.mostRecentMessageTime ? new Date(b.mostRecentMessageTime).getTime() : 0;
       return recentMessageB - recentMessageA;
     });
 
   const filteredGroups = groups
     .filter(group => group.name.toLowerCase().includes(searchQuery.toLowerCase()))
     .sort((a, b) => {
-      const recentMessageA = new Date(a.mostRecentMessageTime).getTime();
-      const recentMessageB = new Date(b.mostRecentMessageTime).getTime();
+      const recentMessageA = a.mostRecentMessageTime ? new Date(a.mostRecentMessageTime).getTime() : 0;
+      const recentMessageB = b.mostRecentMessageTime ? new Date(b.mostRecentMessageTime).getTime() : 0;
       return recentMessageB - recentMessageA;
     });
 
@@ -140,10 +145,10 @@ const Sidebar = ({ onSelectUser, onSelectGroup }) => {
         return;
       }
 
-      await axios.post(`http://localhost:5000/api/messages/mark-as-read`, 
-        { userId },
-        { headers: { 'Authorization': `Bearer ${token}` } }
-      );
+      // await axios.post(`http://localhost:5000/api/messages/mark-as-read`, 
+      //   { userId },
+      //   { headers: { 'Authorization': `Bearer ${token}` } }
+      // );
 
       const userResponse = await axios.get('http://localhost:5000/api/user', {
         headers: {
@@ -193,17 +198,17 @@ const Sidebar = ({ onSelectUser, onSelectGroup }) => {
               )}
               <div className="flex flex-col">
                 <span>{user.username}</span>
-                {user.unreadMessagesCount > 0 && (
+                {/* {user.unreadMessagesCount > 0 && (
                   <span className="text-gray-400 text-sm">
                     Unread Messages: {user.unreadMessagesCount}
                   </span>
-                )}
+                )} */}
               </div>
-              {user.unreadMessagesCount > 0 && (
+              {/* {user.unreadMessagesCount > 0 && (
                 <span className="ml-auto bg-red-600 text-white px-2 py-1 rounded-full text-sm">
-                  {user.unreadMessagesCount}
-                </span>
+                  {/* {user.unreadMessagesCount} }</span>
               )}
+               */}
             </li>
           ))}
         </ul>

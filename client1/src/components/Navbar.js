@@ -38,7 +38,7 @@ const Navbar = ({ user }) => {
           <span>Create Group</span>
         </button>
         <div className="ml-4">
-          <FaBell className="text-white text-2xl" />
+          {/* <FaBell className="text-white text-2xl" /> */}
         </div>
         <button 
           onClick={handleLogout} 

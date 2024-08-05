@@ -17,11 +17,16 @@ const Chat = ({ selectedUserId, selectedGroupId }) => {
     const extractUserDetailsFromToken = () => {
       const token = localStorage.getItem('token');
       if (token) {
-        const decodedToken = JSON.parse(atob(token.split('.')[1])); // Decode JWT token payload
-        return { userId: decodedToken.userId, userName: decodedToken.userName }; // Update based on the actual token structure
+        try {
+          const decodedToken = JSON.parse(atob(token.split('.')[1])); // Decode JWT token payload
+          return { userId: decodedToken.userId, userName: decodedToken.userName }; // Update based on the actual token structure
+        } catch (e) {
+          console.error('Error decoding token:', e);
+        }
       }
       return { userId: null, userName: '' };
     };
+    
 
     const { userId, userName } = extractUserDetailsFromToken();
     setUserId(userId);
@@ -104,11 +109,11 @@ const Chat = ({ selectedUserId, selectedGroupId }) => {
     if (inputMessage.trim() && (selectedUserId || selectedGroupId)) {
       setInputMessage('');
       console.log('Send message function triggered'); // Ensure this is logged
-
+  
       try {
         const token = localStorage.getItem('token');
         console.log('Token:', token); // Log the token
-
+  
         let response;
         if (selectedUserId) {
           response = await axios.post(
@@ -131,23 +136,31 @@ const Chat = ({ selectedUserId, selectedGroupId }) => {
             }
           );
         }
-
+  
         console.log('API Response:', response.data); // Log the API response
-
+  
         if (response && response.data) {
           const sentMessage = {
             id: response.data.id,
             sender_id: userId,
-            sender_name: userName, // Ensure this is set correctly
+            sender_name: response.data.sender_name, // Use sender_name from the response
             receiver_id: selectedUserId || null,
             group_id: selectedGroupId || null,
             message: inputMessage,
             created_at: response.data.created_at || new Date().toISOString(),
           };
-
+  
           console.log('Sent message data:', sentMessage); // Log sent message data
           setMessages((prevMessages) => [...prevMessages, sentMessage]);
-          socket.emit('newMessage', sentMessage); // Emit message to socket
+  
+          // Emit the appropriate event based on the message type
+          if (selectedUserId) {
+            console.log("normal"+selectedUserId);
+            socket.emit('newMessage', sentMessage); // Emit message to socket
+          } else if (selectedGroupId) {
+            console.log("group"+selectedGroupId);
+            socket.emit('newGroupMessage', sentMessage); // Emit group message to socket
+          }
         }
       } catch (error) {
         console.error('Error sending message:', error);
@@ -156,6 +169,8 @@ const Chat = ({ selectedUserId, selectedGroupId }) => {
       console.log('Message input is empty or no user/group selected'); // Debugging empty input cases
     }
   };
+  
+  
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {

@@ -182,22 +182,22 @@ app.get('/api/users', authenticateToken, async (req, res) => {
 
 
 // Mark messages as read for a specific user
-app.post('/api/messages/mark-as-read', authenticateToken, async (req, res) => {
-  try {
-    const { userId } = req.body;
-    const currentUserId = req.user.userId;
+// app.post('/api/messages/mark-as-read', authenticateToken, async (req, res) => {
+//   try {
+//     const { userId } = req.body;
+//     const currentUserId = req.user.userId;
 
-    await pool.query(
-      'UPDATE aman.chat_messages SET read = TRUE WHERE receiver_id = $1 AND sender_id = $2 AND read = FALSE',
-      [currentUserId, userId]
-    );
+//     await pool.query(
+//       'UPDATE aman.chat_messages SET read = TRUE WHERE receiver_id = $1 AND sender_id = $2 AND read = FALSE',
+//       [currentUserId, userId]
+//     );
 
-    res.sendStatus(200);
-  } catch (error) {
-    console.error('Error marking messages as read:', error);
-    res.status(500).send('Server error');
-  }
-});
+//     res.sendStatus(200);
+//   } catch (error) {
+//     console.error('Error marking messages as read:', error);
+//     res.status(500).send('Server error');
+//   }
+// });
 
 
 // Fetch Messages Route for a specific user
@@ -237,29 +237,27 @@ app.get('/api/messages/:userId', authenticateToken, async (req, res) => {
 app.post('/api/messages', authenticateToken, async (req, res) => {
   const { receiverId, message } = req.body;
   const senderId = req.user.userId;
-  // console.log(senderId);
-  // console.log(req.body, receiverId, message);
-  // return;
+  console.log(receiverId,message,senderId);
 
   if (!receiverId || !message) {
     return res.status(400).json({ message: 'Receiver ID and message are required' });
   }
 
   try {
-    // Fetch sender's name
     const senderResult = await pool.query('SELECT username FROM aman.chatusers WHERE id = $1', [senderId]);
+    if (senderResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Sender not found' });
+    }
     const senderName = senderResult.rows[0].username;
-    // console.log(senderResult);
 
-    // Insert the new message
     const result = await pool.query(
       'INSERT INTO aman.chat_messages (sender_id, receiver_id, message) VALUES ($1, $2, $3) RETURNING id, created_at',
       [senderId, receiverId, message]
     );
+    // console.log(result);
 
     const newMessage = result.rows[0];
-
-    // Emit the new message including sender's name
+    console.log(newMessage,senderId,receiverId,message,newMessage.created_at);
     io.emit('newMessage', { sender_id: senderId, sender_name: senderName, receiver_id: receiverId, message, created_at: newMessage.created_at });
 
     // res.status(201).json({ id: newMessage.id, sender_name: senderName, created_at: newMessage.created_at, message });
@@ -268,6 +266,7 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
 
 
 
@@ -383,6 +382,8 @@ app.get('/api/groups', authenticateToken, async (req, res) => {
 });
 
 
+
+
 // Route to get groups with member names and most recent message time
 // Route to get groups with member names and most recent message time for the current user
 // app.get('/api/groups/members', authenticateToken, async (req, res) => {
@@ -457,9 +458,20 @@ app.post('/api/groups/:groupId/messages', authenticateToken, async (req, res) =>
   }
 
   try {
+    // Check if the group exists
+    const groupResult = await pool.query('SELECT * FROM aman.groups WHERE id = $1', [groupId]);
+    if (groupResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Group not found' });
+    }
+
+    // Get sender's username
     const senderResult = await pool.query('SELECT username FROM aman.chatusers WHERE id = $1', [senderId]);
+    if (senderResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Sender not found' });
+    }
     const senderName = senderResult.rows[0].username;
 
+    // Insert new message
     const result = await pool.query(
       'INSERT INTO aman.group_messages (group_id, sender_id, message) VALUES ($1, $2, $3) RETURNING id, created_at',
       [groupId, senderId, message]
@@ -467,18 +479,29 @@ app.post('/api/groups/:groupId/messages', authenticateToken, async (req, res) =>
 
     const newMessage = result.rows[0];
 
-    // Emit the new group message including sender's name
-    io.to(groupId).emit('newMessage', { sender_id: senderId, sender_name: senderName, group_id: groupId, message, created_at: newMessage.created_at });
+    // Update the mostRecentMessageTime for the group
+    await pool.query(
+      'UPDATE aman.groups SET most_recent_message_time = $1 WHERE id = $2',
+      [newMessage.created_at, groupId]
+    );
 
-    res.status(201).json(newMessage);
+    io.emit('newMessage', { group_id:groupId, sender_id: senderId, sender_name: senderName, message, created_at: newMessage.created_at });
+
+    // Emit the message to the specific group
+    // io.to(groupId).emit('newGroupMessage', {
+    //   group_id: groupId,
+    //   sender_id: senderId,
+    //   sender_name: senderName,
+    //   message,
+    //   created_at: newMessage.created_at
+    // });
+
+    res.status(201).json({ ...newMessage, sender_name: senderName });
   } catch (error) {
     console.error('Error sending group message:', error);
-    res.status(500).json({ message: 'Error sending group message' });
+    res.status(500).json({ message: 'Server error' });
   }
 });
-
-
-
 
 
 
@@ -487,7 +510,7 @@ app.post('/api/groups/:groupId/messages', authenticateToken, async (req, res) =>
 // Route to get details of a specific group
 app.get('/api/groups/:id', async (req, res) => {
   const groupId = parseInt(req.params.id, 10);
-  // console.log('Fetching details for group:', groupId);
+
   try {
     const result = await pool.query('SELECT * FROM aman.groups WHERE id = $1', [groupId]);
     if (result.rows.length > 0) {
@@ -541,7 +564,6 @@ if (!fs.existsSync('uploads')) {
   fs.mkdirSync('uploads');
 }
 
-// Socket.IO events
 io.on('connection', (socket) => {
   console.log('A user connected');
 
@@ -554,15 +576,15 @@ io.on('connection', (socket) => {
   // Handle new message event
   socket.on('newMessage', (data) => {
     const { receiver_id, message } = data;
-    console.log("T1 "+ receiver_id, message);
-    io.to(receiver_id).emit('messageReceived', { message });
+    console.log("T1 " + receiver_id, message);
+    socket.to(receiver_id).emit('messageReceived', { message });
   });
 
   // Handle new group message event
   socket.on('newGroupMessage', (data) => {
     const { group_id, message } = data;
-    console.log("T2 "+ group_id, message);
-    io.to(group_id).emit('groupMessageReceived', { message });
+    console.log("T2 " + group_id, message);
+    socket.to(group_id).emit('groupMessageReceived', { message });
   });
 
   // Handle disconnect
@@ -570,6 +592,7 @@ io.on('connection', (socket) => {
     console.log('User disconnected');
   });
 });
+
 
 
 server.listen(port, () => {
